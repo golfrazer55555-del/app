@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">메모 배경</string>
     <string name="tile_label">메모 배경</string>
+    <string name="widget_description">지금 적용된 메모를 보여주고, 누르면 바로 편집해요</string>
 </resources>

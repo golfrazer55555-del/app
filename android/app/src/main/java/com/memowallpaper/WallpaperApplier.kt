@@ -11,12 +11,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** 화면이 닫혀도 끝까지 실행돼야 하는 작업용(배경화면 적용 등) */
 object AppScope : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 object WallpaperApplier {
+
+    private val lock = Mutex()
 
     /** 실제 화면 해상도(세로 방향 기준) */
     fun screenSize(context: Context): Pair<Int, Int> {
@@ -38,33 +41,30 @@ object WallpaperApplier {
      */
     suspend fun apply(context: Context, memo: Memo, target: Target): Result<Unit> {
         val app = context.applicationContext
-        return AppScope.async { applyBlocking(app, memo, target) }.await()
+        return AppScope.async { lock.withLock { applyNow(app, memo, target) } }.await()
     }
 
-    private suspend fun applyBlocking(context: Context, memo: Memo, target: Target): Result<Unit> =
-        withContext(Dispatchers.Default) {
-            runCatching {
-                val wm = WallpaperManager.getInstance(context)
-                check(wm.isWallpaperSupported) { "이 기기는 배경화면 변경을 지원하지 않아요." }
-                check(wm.isSetWallpaperAllowed) { "기기 정책 때문에 배경화면을 바꿀 수 없어요." }
+    private fun applyNow(context: Context, memo: Memo, target: Target): Result<Unit> = runCatching {
+        val wm = WallpaperManager.getInstance(context)
+        check(wm.isWallpaperSupported) { "이 기기는 배경화면 변경을 지원하지 않아요." }
+        check(wm.isSetWallpaperAllowed) { "기기 정책 때문에 배경화면을 바꿀 수 없어요." }
 
-                val (w, h) = screenSize(context)
-                val bmp = WallpaperRenderer.render(memo, w, h)
-                val flags = when (target) {
-                    Target.LOCK -> WallpaperManager.FLAG_LOCK
-                    Target.HOME -> WallpaperManager.FLAG_SYSTEM
-                    Target.BOTH -> WallpaperManager.FLAG_LOCK or WallpaperManager.FLAG_SYSTEM
-                }
-                try {
-                    val id = wm.setBitmap(bmp, null, true, flags)
-                    check(id != 0) { "배경화면을 설정하지 못했어요." }
-                } finally {
-                    bmp.recycle()
-                }
-
-                MemoStore.get(context).setApplied(memo.id)
-                TileService.requestListeningState(context, ComponentName(context, MemoTileService::class.java))
-                Unit
-            }
+        val (w, h) = screenSize(context)
+        val bmp = WallpaperRenderer.render(memo, w, h, ImageStore.assets(context))
+        val flags = when (target) {
+            Target.LOCK -> WallpaperManager.FLAG_LOCK
+            Target.HOME -> WallpaperManager.FLAG_SYSTEM
+            Target.BOTH -> WallpaperManager.FLAG_LOCK or WallpaperManager.FLAG_SYSTEM
         }
+        try {
+            val id = wm.setBitmap(bmp, null, true, flags)
+            check(id != 0) { "배경화면을 설정하지 못했어요." }
+        } finally {
+            bmp.recycle()
+        }
+
+        MemoStore.get(context).markApplied(memo.id)
+        TileService.requestListeningState(context, ComponentName(context, MemoTileService::class.java))
+        Unit
+    }
 }

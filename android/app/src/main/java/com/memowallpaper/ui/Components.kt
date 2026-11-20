@@ -42,6 +42,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import com.memowallpaper.ImageStore
 import com.memowallpaper.Memo
 import com.memowallpaper.Target
 import com.memowallpaper.WallpaperRenderer
@@ -75,6 +77,8 @@ fun overlapWarning(memo: Memo, screen: Pair<Int, Int>, guide: Guide): String? {
  */
 @Composable
 fun WallpaperCanvas(memo: Memo, modifier: Modifier = Modifier, guide: Guide? = null) {
+    val context = LocalContext.current
+    val assets = remember { ImageStore.assets(context) }
     val zonePaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(70, 0, 0, 0) }
     }
@@ -100,7 +104,7 @@ fun WallpaperCanvas(memo: Memo, modifier: Modifier = Modifier, guide: Guide? = n
         val h = size.height.toInt().coerceAtLeast(1)
         drawIntoCanvas { c ->
             val nc = c.nativeCanvas
-            WallpaperRenderer.draw(nc, memo, w, h)
+            WallpaperRenderer.draw(nc, memo, w, h, assets)
             guide ?: return@drawIntoCanvas
             linePaint.strokeWidth = 1.dp.toPx()
             linePaint.pathEffect = DashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()), 0f)

@@ -1,6 +1,7 @@
 package com.memowallpaper.ui
 
 import android.app.StatusBarManager
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.graphics.drawable.Icon
 import android.os.Build
@@ -27,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -40,6 +42,10 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -68,6 +74,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.memowallpaper.Memo
 import com.memowallpaper.MemoStore
 import com.memowallpaper.MemoTileService
+import com.memowallpaper.MemoWidgetProvider
+import com.memowallpaper.Scheduler
+import com.memowallpaper.TEMPLATES
 import com.memowallpaper.R
 import com.memowallpaper.Target
 import com.memowallpaper.WallpaperApplier
@@ -75,7 +84,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
+fun HomeScreen(onEdit: (String) -> Unit, onNew: (Memo) -> Unit, onSchedule: () -> Unit) {
     val context = LocalContext.current
     val store = remember { MemoStore.get(context) }
     val memos by store.memos.collectAsStateWithLifecycle()
@@ -89,6 +98,8 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
     val scope = rememberCoroutineScope()
     var applyingId by remember { mutableStateOf<String?>(null) }
     var showHelp by remember { mutableStateOf(false) }
+    var showTemplates by remember { mutableStateOf(false) }
+    val schedules by store.schedules.collectAsStateWithLifecycle()
 
     fun apply(memo: Memo) {
         if (applyingId != null) return
@@ -109,6 +120,9 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
             TopAppBar(
                 title = { Text("메모 배경화면", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onSchedule) {
+                        Icon(Icons.Default.DateRange, contentDescription = "시간대별 자동 변경")
+                    }
                     IconButton(onClick = { showHelp = true }) {
                         Icon(Icons.Outlined.Info, contentDescription = "사용법")
                     }
@@ -117,7 +131,7 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = onNew,
+                onClick = { showTemplates = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text("새 메모") },
             )
@@ -139,6 +153,25 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 TargetSelector(target, onChange = store::setTarget)
             }
+            if (schedules.any { it.enabled }) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    val next = Scheduler.nextChange(context)
+                    Card(
+                        onClick = onSchedule,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    ) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text("시간대별 자동 변경 켜짐", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            if (next != null) {
+                                Text(
+                                    "다음: ${next.second.daysLabel()} ${next.second.timeLabel()} → '${store.find(next.second.memoId)?.displayName()}'",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (!tipDismissed) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     TileTipCard(
@@ -147,6 +180,7 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
                                 if (added) store.dismissTileTip()
                             }
                         },
+                        onAddWidget = { requestAddWidget(context) },
                         onDismiss = store::dismissTileTip,
                     )
                 }
@@ -154,7 +188,7 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
             if (memos.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(
-                        "아직 메모가 없어요.\n'새 메모'를 눌러 만들어 보세요.",
+                        "아직 메모가 없어요.\n아래 '새 메모'를 눌러 템플릿을 고르고 만들어 보세요.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 48.dp),
@@ -183,6 +217,45 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: () -> Unit) {
     }
 
     if (showHelp) HelpDialog(onDismiss = { showHelp = false })
+
+    if (showTemplates) {
+        val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showTemplates = false }, sheetState = sheet) {
+            Text(
+                "어떤 메모를 만들까요?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            TEMPLATES.forEach { t ->
+                val sample = remember(t) { t.make() }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showTemplates = false
+                            onNew(t.make())
+                        }
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WallpaperCanvas(
+                        memo = sample,
+                        modifier = Modifier
+                            .height(76.dp)
+                            .aspectRatio(ratio)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+                    )
+                    Column(Modifier.padding(start = 16.dp)) {
+                        Text(t.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(t.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -203,7 +276,7 @@ private fun TargetSelector(target: Target, onChange: (Target) -> Unit) {
 }
 
 @Composable
-private fun TileTipCard(onAdd: () -> Unit, onDismiss: () -> Unit) {
+private fun TileTipCard(onAdd: () -> Unit, onAddWidget: () -> Unit, onDismiss: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     ) {
@@ -211,9 +284,9 @@ private fun TileTipCard(onAdd: () -> Unit, onDismiss: () -> Unit) {
             Text("더 빠르게 바꾸기", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    "알림창에 '메모 배경' 타일을 추가하면 앱을 열지 않고 메모를 바꿀 수 있어요."
+                    "알림창 타일로 앱을 열지 않고 메모를 바꾸고, 홈 위젯으로 메모를 보면서 바로 고칠 수 있어요."
                 } else {
-                    "알림창을 내려 연필(편집) 버튼 → '메모 배경' 타일을 끌어다 추가하면 앱을 열지 않고 바꿀 수 있어요."
+                    "알림창을 내려 연필(편집) 버튼 → '메모 배경' 타일을 끌어다 추가하면 앱을 열지 않고 바꿀 수 있어요. 홈 위젯도 추가해 보세요."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -221,6 +294,7 @@ private fun TileTipCard(onAdd: () -> Unit, onDismiss: () -> Unit) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     FilledTonalButton(onClick = onAdd) { Text("타일 추가") }
                 }
+                FilledTonalButton(onClick = onAddWidget) { Text("위젯 추가") }
                 TextButton(onClick = onDismiss) { Text("닫기") }
             }
         }
@@ -322,6 +396,10 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                     "알림창 타일",
                     "알림창 빠른 설정에 '메모 배경' 타일을 추가하세요. 메모가 2개 이하면 누를 때마다 다음 메모로, 3개 이상이면 목록에서 골라요. 잠긴 상태에서는 다음 메모로 넘어가요.",
                 )
+                HelpItem("시간대별 자동 변경", "위쪽 달력 버튼에서 '오전 7:30엔 출근 전, 오후 9시엔 자기 전'처럼 정해 두면 그 시간에 알아서 바뀌어요.")
+                HelpItem("날짜 · D-day · 며칠째", "편집 화면의 버튼으로 넣으면 매일 자정에 숫자가 자동으로 바뀌어요.")
+                HelpItem("홈 위젯", "지금 적용된 메모를 보여줘요. 누르면 바로 편집 화면이 열리고, 저장하면 배경화면도 같이 바뀌어요.")
+                HelpItem("사진 · 그림", "편집 화면 아래쪽에서 갤러리 사진을 배경으로 넣거나 직접 그림을 그릴 수 있어요.")
                 HelpItem("앱 아이콘 바로가기", "앱 아이콘을 길게 누르면 앞쪽 메모 4개가 나와요. 눌러서 바로 적용하거나 홈 화면에 끌어다 둘 수 있어요.")
                 HelpItem(
                     "잠금화면이 안 바뀌면 (갤럭시)",
@@ -337,6 +415,16 @@ private fun HelpItem(title: String, body: String) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 홈 화면에 위젯 추가 요청 */
+private fun requestAddWidget(context: android.content.Context) {
+    val mgr = AppWidgetManager.getInstance(context) ?: return
+    if (mgr.isRequestPinAppWidgetSupported) {
+        mgr.requestPinAppWidget(ComponentName(context, MemoWidgetProvider::class.java), null, null)
+    } else {
+        android.widget.Toast.makeText(context, "홈 화면 빈 곳을 길게 누르고 '위젯'에서 '메모 배경'을 추가해 주세요", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 

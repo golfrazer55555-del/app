@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 
-/** 메모 목록과 설정을 SharedPreferences에 저장합니다. 앱 전체에서 하나만 씁니다. */
+/** 메모·자동 변경 일정·설정을 SharedPreferences에 저장합니다. 앱 전체에서 하나만 씁니다. */
 class MemoStore private constructor(private val appContext: Context) {
 
     private val prefs: SharedPreferences =
@@ -15,6 +15,9 @@ class MemoStore private constructor(private val appContext: Context) {
 
     private val _memos = MutableStateFlow(loadMemos())
     val memos: StateFlow<List<Memo>> = _memos.asStateFlow()
+
+    private val _schedules = MutableStateFlow(loadSchedules())
+    val schedules: StateFlow<List<Schedule>> = _schedules.asStateFlow()
 
     private val _appliedId = MutableStateFlow(prefs.getString(KEY_APPLIED, null))
     val appliedId: StateFlow<String?> = _appliedId.asStateFlow()
@@ -25,7 +28,12 @@ class MemoStore private constructor(private val appContext: Context) {
     private val _tileTipDismissed = MutableStateFlow(prefs.getBoolean(KEY_TILE_TIP, false))
     val tileTipDismissed: StateFlow<Boolean> = _tileTipDismissed.asStateFlow()
 
+    /** 마지막으로 배경화면을 적용한 시각(epoch ms) */
+    val lastAppliedAt: Long get() = prefs.getLong(KEY_APPLIED_AT, 0L)
+
     fun find(id: String?): Memo? = id?.let { i -> _memos.value.firstOrNull { it.id == i } }
+
+    fun applied(): Memo? = find(_appliedId.value)
 
     fun upsert(memo: Memo) {
         val list = _memos.value.toMutableList()
@@ -37,12 +45,19 @@ class MemoStore private constructor(private val appContext: Context) {
     fun delete(id: String) {
         setMemos(_memos.value.filterNot { it.id == id })
         Shortcuts.disable(appContext, listOf(id))
-        if (_appliedId.value == id) setApplied(null)
+        if (_schedules.value.any { it.memoId == id }) setSchedules(_schedules.value.filterNot { it.memoId == id })
+        if (_appliedId.value == id) {
+            _appliedId.value = null
+            prefs.edit().remove(KEY_APPLIED).apply()
+            onChanged()
+        }
     }
 
-    fun setApplied(id: String?) {
+    /** 배경화면 적용이 끝났을 때 호출 */
+    fun markApplied(id: String) {
         _appliedId.value = id
-        prefs.edit().putString(KEY_APPLIED, id).apply()
+        prefs.edit().putString(KEY_APPLIED, id).putLong(KEY_APPLIED_AT, System.currentTimeMillis()).apply()
+        onChanged()
     }
 
     fun setTarget(t: Target) {
@@ -55,52 +70,79 @@ class MemoStore private constructor(private val appContext: Context) {
         prefs.edit().putBoolean(KEY_TILE_TIP, true).apply()
     }
 
+    fun upsertSchedule(s: Schedule) {
+        val list = _schedules.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == s.id }
+        if (idx >= 0) list[idx] = s else list.add(s)
+        setSchedules(list.sortedWith(compareBy({ it.hour }, { it.minute })))
+    }
+
+    fun deleteSchedule(id: String) = setSchedules(_schedules.value.filterNot { it.id == id })
+
+    /** 사진·그림 파일 중 메모가 쓰고 있는 것 */
+    fun usedMediaFiles(): Set<String> =
+        _memos.value.flatMap { listOfNotNull(it.image, it.drawing) }.toSet()
+
     private fun setMemos(list: List<Memo>) {
         _memos.value = list
         val arr = JSONArray().apply { list.forEach { put(it.toJson()) } }
         prefs.edit().putString(KEY_MEMOS, arr.toString()).apply()
         Shortcuts.update(appContext, list)
+        onChanged()
+    }
+
+    private fun setSchedules(list: List<Schedule>) {
+        _schedules.value = list
+        val arr = JSONArray().apply { list.forEach { put(it.toJson()) } }
+        prefs.edit().putString(KEY_SCHEDULES, arr.toString()).apply()
+        onChanged()
+    }
+
+    /** 위젯·알람을 최신 상태로 */
+    private fun onChanged() {
+        WidgetUpdater.updateAll(appContext)
+        Scheduler.reschedule(appContext)
     }
 
     private fun loadMemos(): List<Memo> {
-        val raw = prefs.getString(KEY_MEMOS, null) ?: return sampleMemos().also { samples ->
-            val arr = JSONArray().apply { samples.forEach { put(it.toJson()) } }
-            prefs.edit().putString(KEY_MEMOS, arr.toString()).apply()
-        }
-        return runCatching {
+        val raw = prefs.getString(KEY_MEMOS, null) ?: return emptyList()
+        val list = runCatching {
             val arr = JSONArray(raw)
             List(arr.length()) { Memo.fromJson(arr.getJSONObject(it)) }
         }.getOrDefault(emptyList())
+
+        // 1.0.0에서 넣었던 예시 메모(손대지 않은 것만) 제거
+        if (!prefs.getBoolean(KEY_SAMPLES_REMOVED, false)) {
+            val cleaned = list.filterNot { m -> OLD_SAMPLES.any { (t, x) -> m.title == t && m.text == x } }
+            val arr = JSONArray().apply { cleaned.forEach { put(it.toJson()) } }
+            prefs.edit().putString(KEY_MEMOS, arr.toString()).putBoolean(KEY_SAMPLES_REMOVED, true).apply()
+            return cleaned
+        }
+        return list
     }
 
-    private fun sampleMemos() = listOf(
-        Memo(
-            title = "외출 전",
-            text = "약 먹기\n지갑 · 열쇠 · 폰 챙기기\n나가기 전에 가스 밸브 확인",
-            bgColor = 0xFF1E3A8A.toInt(),
-        ),
-        Memo(
-            title = "오늘 집중",
-            text = "물 2L 마시기\n저녁 10시 전에 폰 내려놓기",
-            prefix = Prefix.DOT,
-            bgColor = 0xFF14532D.toInt(),
-        ),
-        Memo(
-            title = "다짐",
-            text = "미루지 말자",
-            prefix = Prefix.NONE,
-            bgColor = 0xFFFDE68A.toInt(),
-            sizePct = 10f,
-            align = Align.CENTER,
-            posPct = 50f,
-        ),
-    )
+    private fun loadSchedules(): List<Schedule> {
+        val raw = prefs.getString(KEY_SCHEDULES, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            List(arr.length()) { Schedule.fromJson(arr.getJSONObject(it)) }
+        }.getOrDefault(emptyList())
+    }
 
     companion object {
         private const val KEY_MEMOS = "memos"
+        private const val KEY_SCHEDULES = "schedules"
         private const val KEY_APPLIED = "applied_id"
+        private const val KEY_APPLIED_AT = "applied_at"
         private const val KEY_TARGET = "target"
         private const val KEY_TILE_TIP = "tile_tip_dismissed"
+        private const val KEY_SAMPLES_REMOVED = "samples_removed_v2"
+
+        private val OLD_SAMPLES = listOf(
+            "외출 전" to "약 먹기\n지갑 · 열쇠 · 폰 챙기기\n나가기 전에 가스 밸브 확인",
+            "오늘 집중" to "물 2L 마시기\n저녁 10시 전에 폰 내려놓기",
+            "다짐" to "미루지 말자",
+        )
 
         @Volatile
         private var instance: MemoStore? = null
