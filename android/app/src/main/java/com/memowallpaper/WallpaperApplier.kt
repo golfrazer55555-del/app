@@ -63,7 +63,8 @@ object WallpaperApplier {
             bmp.recycle()
         }
 
-        MemoStore.get(context).markApplied(memo.id)
+        val store = MemoStore.get(context)
+        store.markApplied(if (store.find(memo.id) != null) memo.id else null)
         TileService.requestListeningState(context, ComponentName(context, MemoTileService::class.java))
         Unit
     }

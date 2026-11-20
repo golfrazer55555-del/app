@@ -6,6 +6,15 @@
     <!-- 시간대별 자동 변경·자정 갱신 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 장소 알림 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 지도·주소 검색 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"
@@ -68,6 +77,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/memo_widget_info" />
         </receiver>
+
+        <!-- 장소 도착·출발 -->
+        <receiver
+            android:name=".GeofenceReceiver"
+            android:exported="false" />
 
         <!-- 예약 알람 -->
         <receiver

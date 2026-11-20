@@ -43,7 +43,7 @@ object WidgetUpdater {
 
         if (memo == null) {
             views.setInt(R.id.widget_bg, "setColorFilter", Memo.DEFAULT_BG)
-            views.setTextViewText(R.id.widget_title, "메모 배경")
+            views.setTextViewText(R.id.widget_title, "깜빡 방지")
             views.setTextViewText(R.id.widget_text, "앱에서 메모를 적용하면 여기에 보여요")
             views.setTextColor(R.id.widget_title, 0xCCFFFFFF.toInt())
             views.setTextColor(R.id.widget_text, 0xFFFFFFFF.toInt())

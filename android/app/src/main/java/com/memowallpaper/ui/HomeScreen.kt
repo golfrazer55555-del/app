@@ -118,11 +118,8 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: (Memo) -> Unit, onSchedule: () -
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("메모 배경화면", fontWeight = FontWeight.Bold) },
+                title = { Text("깜빡 방지", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = onSchedule) {
-                        Icon(Icons.Default.DateRange, contentDescription = "시간대별 자동 변경")
-                    }
                     IconButton(onClick = { showHelp = true }) {
                         Icon(Icons.Outlined.Info, contentDescription = "사용법")
                     }
@@ -286,7 +283,7 @@ private fun TileTipCard(onAdd: () -> Unit, onAddWidget: () -> Unit, onDismiss: (
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     "알림창 타일로 앱을 열지 않고 메모를 바꾸고, 홈 위젯으로 메모를 보면서 바로 고칠 수 있어요."
                 } else {
-                    "알림창을 내려 연필(편집) 버튼 → '메모 배경' 타일을 끌어다 추가하면 앱을 열지 않고 바꿀 수 있어요. 홈 위젯도 추가해 보세요."
+                    "알림창을 내려 연필(편집) 버튼 → '깜빡 방지' 타일을 끌어다 추가하면 앱을 열지 않고 바꿀 수 있어요. 홈 위젯도 추가해 보세요."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -394,9 +391,10 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                 HelpItem("편집", "카드를 길게 누르거나 연필 버튼을 눌러요.")
                 HelpItem(
                     "알림창 타일",
-                    "알림창 빠른 설정에 '메모 배경' 타일을 추가하세요. 메모가 2개 이하면 누를 때마다 다음 메모로, 3개 이상이면 목록에서 골라요. 잠긴 상태에서는 다음 메모로 넘어가요.",
+                    "알림창 빠른 설정에 '깜빡 방지' 타일을 추가하세요. 메모가 2개 이하면 누를 때마다 다음 메모로, 3개 이상이면 목록에서 골라요. 잠긴 상태에서는 다음 메모로 넘어가요.",
                 )
-                HelpItem("시간대별 자동 변경", "위쪽 달력 버튼에서 '오전 7:30엔 출근 전, 오후 9시엔 자기 전'처럼 정해 두면 그 시간에 알아서 바뀌어요.")
+                HelpItem("장소 알림", "아래 '장소' 탭에서 집·마트 같은 곳을 등록하면 도착하거나 떠날 때 알림이 와요. 잠금화면도 같이 바꿀 수 있어요.")
+                HelpItem("시간대별 자동 변경", "아래 '시간' 탭에서 '오전 7:30엔 출근 전, 오후 9시엔 자기 전'처럼 정해 두면 그 시간에 알아서 바뀌어요.")
                 HelpItem("날짜 · D-day · 며칠째", "편집 화면의 버튼으로 넣으면 매일 자정에 숫자가 자동으로 바뀌어요.")
                 HelpItem("홈 위젯", "지금 적용된 메모를 보여줘요. 누르면 바로 편집 화면이 열리고, 저장하면 배경화면도 같이 바뀌어요.")
                 HelpItem("사진 · 그림", "편집 화면 아래쪽에서 갤러리 사진을 배경으로 넣거나 직접 그림을 그릴 수 있어요.")
@@ -424,7 +422,7 @@ private fun requestAddWidget(context: android.content.Context) {
     if (mgr.isRequestPinAppWidgetSupported) {
         mgr.requestPinAppWidget(ComponentName(context, MemoWidgetProvider::class.java), null, null)
     } else {
-        android.widget.Toast.makeText(context, "홈 화면 빈 곳을 길게 누르고 '위젯'에서 '메모 배경'을 추가해 주세요", android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(context, "홈 화면 빈 곳을 길게 누르고 '위젯'에서 '깜빡 방지'를 추가해 주세요", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 

@@ -69,7 +69,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduleScreen(onBack: () -> Unit) {
+fun ScheduleScreen(onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val store = remember { MemoStore.get(context) }
     val schedules by store.schedules.collectAsStateWithLifecycle()
@@ -86,15 +86,17 @@ fun ScheduleScreen(onBack: () -> Unit) {
     }
     var editingTimeOf by remember { mutableStateOf<Schedule?>(null) }
 
-    BackHandler(onBack = onBack)
+    if (onBack != null) BackHandler(onBack = onBack)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("시간대별 자동 변경") },
+                title = { Text("시간대별 자동 변경", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
+                        }
                     }
                 },
             )

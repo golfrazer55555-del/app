@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 
-/** 메모·자동 변경 일정·설정을 SharedPreferences에 저장합니다. 앱 전체에서 하나만 씁니다. */
+/** 메모·자동 변경 일정·장소 알림·설정을 SharedPreferences에 저장합니다. 앱 전체에서 하나만 씁니다. */
 class MemoStore private constructor(private val appContext: Context) {
 
     private val prefs: SharedPreferences =
@@ -18,6 +18,9 @@ class MemoStore private constructor(private val appContext: Context) {
 
     private val _schedules = MutableStateFlow(loadSchedules())
     val schedules: StateFlow<List<Schedule>> = _schedules.asStateFlow()
+
+    private val _places = MutableStateFlow(loadPlaces())
+    val places: StateFlow<List<Place>> = _places.asStateFlow()
 
     private val _appliedId = MutableStateFlow(prefs.getString(KEY_APPLIED, null))
     val appliedId: StateFlow<String?> = _appliedId.asStateFlow()
@@ -46,6 +49,8 @@ class MemoStore private constructor(private val appContext: Context) {
         setMemos(_memos.value.filterNot { it.id == id })
         Shortcuts.disable(appContext, listOf(id))
         if (_schedules.value.any { it.memoId == id }) setSchedules(_schedules.value.filterNot { it.memoId == id })
+        // 이 메모를 쓰던 장소는 '알림 문구 그대로'로
+        if (_places.value.any { it.memoId == id }) setPlaces(_places.value.map { if (it.memoId == id) it.copy(memoId = null) else it })
         if (_appliedId.value == id) {
             _appliedId.value = null
             prefs.edit().remove(KEY_APPLIED).apply()
@@ -53,8 +58,8 @@ class MemoStore private constructor(private val appContext: Context) {
         }
     }
 
-    /** 배경화면 적용이 끝났을 때 호출 */
-    fun markApplied(id: String) {
+    /** 배경화면 적용이 끝났을 때 호출. 목록에 없는 즉석 메모(장소 알림 문구 등)는 null */
+    fun markApplied(id: String?) {
         _appliedId.value = id
         prefs.edit().putString(KEY_APPLIED, id).putLong(KEY_APPLIED_AT, System.currentTimeMillis()).apply()
         onChanged()
@@ -79,6 +84,30 @@ class MemoStore private constructor(private val appContext: Context) {
 
     fun deleteSchedule(id: String) = setSchedules(_schedules.value.filterNot { it.id == id })
 
+    fun findPlace(id: String?): Place? = id?.let { i -> _places.value.firstOrNull { it.id == i } }
+
+    fun upsertPlace(p: Place) {
+        val list = _places.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == p.id }
+        if (idx >= 0) list[idx] = p else list.add(p)
+        setPlaces(list)
+    }
+
+    fun deletePlace(id: String) = setPlaces(_places.value.filterNot { it.id == id })
+
+    /** 같은 장소 알림이 너무 자주 오지 않게(경계에서 들락날락할 때) 마지막 알림 시각 기록 */
+    fun lastPlaceAlertAt(placeId: String, entering: Boolean): Long =
+        prefs.getLong("place_alert_${placeId}_$entering", 0L)
+
+    fun markPlaceAlert(placeId: String, entering: Boolean) {
+        prefs.edit().putLong("place_alert_${placeId}_$entering", System.currentTimeMillis()).apply()
+    }
+
+    /** 위치 감지 등록 오류(위치 꺼짐 등). 없으면 null */
+    var geofenceError: String?
+        get() = prefs.getString(KEY_GEOFENCE_ERROR, null)
+        set(value) = prefs.edit().putString(KEY_GEOFENCE_ERROR, value).apply()
+
     /** 사진·그림 파일 중 메모가 쓰고 있는 것 */
     fun usedMediaFiles(): Set<String> =
         _memos.value.flatMap { listOfNotNull(it.image, it.drawing) }.toSet()
@@ -96,6 +125,13 @@ class MemoStore private constructor(private val appContext: Context) {
         val arr = JSONArray().apply { list.forEach { put(it.toJson()) } }
         prefs.edit().putString(KEY_SCHEDULES, arr.toString()).apply()
         onChanged()
+    }
+
+    private fun setPlaces(list: List<Place>) {
+        _places.value = list
+        val arr = JSONArray().apply { list.forEach { put(it.toJson()) } }
+        prefs.edit().putString(KEY_PLACES, arr.toString()).apply()
+        GeofenceManager.sync(appContext)
     }
 
     /** 위젯·알람을 최신 상태로 */
@@ -121,6 +157,14 @@ class MemoStore private constructor(private val appContext: Context) {
         return list
     }
 
+    private fun loadPlaces(): List<Place> {
+        val raw = prefs.getString(KEY_PLACES, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            List(arr.length()) { Place.fromJson(arr.getJSONObject(it)) }
+        }.getOrDefault(emptyList())
+    }
+
     private fun loadSchedules(): List<Schedule> {
         val raw = prefs.getString(KEY_SCHEDULES, null) ?: return emptyList()
         return runCatching {
@@ -132,6 +176,8 @@ class MemoStore private constructor(private val appContext: Context) {
     companion object {
         private const val KEY_MEMOS = "memos"
         private const val KEY_SCHEDULES = "schedules"
+        private const val KEY_PLACES = "places"
+        private const val KEY_GEOFENCE_ERROR = "geofence_error"
         private const val KEY_APPLIED = "applied_id"
         private const val KEY_APPLIED_AT = "applied_at"
         private const val KEY_TARGET = "target"

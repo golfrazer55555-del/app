@@ -127,12 +127,13 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 }
 
-/** 재부팅·시간 변경·앱 업데이트 후 알람 다시 걸기(놓친 변경도 처리) */
+/** 재부팅·시간 변경·앱 업데이트 후 알람과 장소 감지 다시 걸기(놓친 변경도 처리) */
 class SystemEventReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
         AppScope.launch {
             try {
+                GeofenceManager.sync(context.applicationContext)
                 Scheduler.runDue(context)
             } finally {
                 pending.finish()

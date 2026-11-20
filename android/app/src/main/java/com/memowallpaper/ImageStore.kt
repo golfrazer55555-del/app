@@ -119,7 +119,7 @@ object ImageStore {
         }
     }
 
-    /** 완성된 배경화면을 갤러리(Pictures/메모배경)에 저장 */
+    /** 완성된 배경화면을 갤러리(Pictures/깜빡방지)에 저장 */
     suspend fun saveToGallery(context: Context, memo: Memo): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { "Android 10 이상에서만 지원해요" }
@@ -128,7 +128,7 @@ object ImageStore {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, "memo_${System.currentTimeMillis()}.png")
                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/메모배경")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/깜빡방지")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val resolver = context.contentResolver

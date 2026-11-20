@@ -278,7 +278,7 @@ fun EditorScreen(memoId: String, initial: Memo?, onClose: () -> Unit) {
                                     scope.launch {
                                         val r = ImageStore.saveToGallery(context, m)
                                         snackbar.showSnackbar(
-                                            if (r.isSuccess) "갤러리(Pictures/메모배경)에 저장했어요"
+                                            if (r.isSuccess) "갤러리(Pictures/깜빡방지)에 저장했어요"
                                             else "저장하지 못했어요: ${r.exceptionOrNull()?.message}",
                                         )
                                     }
