@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1e3a8a">
+  <meta name="description" content="단색 배경에 메모를 적어 배경화면 이미지로 만드는 앱">
+  <title>메모 배경화면</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="layout">
+    <!-- 미리보기 -->
+    <section class="preview-pane" aria-label="미리보기">
+      <div class="phone" id="phone">
+        <canvas id="canvas" aria-label="배경화면 미리보기"></canvas>
+        <div class="zone" id="zoneTop" hidden><span id="zoneTopLabel"></span></div>
+        <div class="zone" id="zoneBottom" hidden><span id="zoneBottomLabel"></span></div>
+      </div>
+      <div class="preview-meta">
+        <div class="seg seg-sm" role="radiogroup" aria-label="가림 영역 표시">
+          <label><input type="radio" name="guide" value="lock"><span>잠금화면</span></label>
+          <label><input type="radio" name="guide" value="home"><span>홈화면</span></label>
+          <label><input type="radio" name="guide" value="none"><span>끄기</span></label>
+        </div>
+        <p class="warn" id="overlapWarn" hidden></p>
+      </div>
+    </section>
+
+    <!-- 설정 -->
+    <section class="controls" aria-label="설정">
+      <h1 class="title">메모 배경화면</h1>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="text">메모</label>
+          <button type="button" class="chip-btn" id="insertDate">+ 오늘 날짜</button>
+        </div>
+        <textarea id="text" rows="5" placeholder="한 줄에 하나씩 적어보세요&#10;예) 약 먹기"></textarea>
+      </div>
+
+      <div class="field">
+        <span class="label">줄 앞 기호</span>
+        <div class="seg" role="radiogroup" aria-label="줄 앞 기호">
+          <label><input type="radio" name="prefix" value="none"><span>없음</span></label>
+          <label><input type="radio" name="prefix" value="dot"><span>● 점</span></label>
+          <label><input type="radio" name="prefix" value="check"><span>☐ 체크</span></label>
+          <label><input type="radio" name="prefix" value="num"><span>1. 번호</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">배경색</span>
+        <div class="swatches" id="swatches">
+          <label class="swatch swatch-custom" title="직접 고르기">
+            <input type="color" id="customColor" aria-label="배경색 직접 고르기">
+            <span aria-hidden="true">+</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="size">글자 크기</label>
+          <output id="sizeOut"></output>
+        </div>
+        <input type="range" id="size" min="3" max="12" step="0.5">
+      </div>
+
+      <div class="field row">
+        <div>
+          <span class="label">정렬</span>
+          <div class="seg" role="radiogroup" aria-label="정렬">
+            <label><input type="radio" name="align" value="left"><span>왼쪽</span></label>
+            <label><input type="radio" name="align" value="center"><span>가운데</span></label>
+            <label><input type="radio" name="align" value="right"><span>오른쪽</span></label>
+          </div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="bold">
+          <span>굵게</span>
+        </label>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="pos">세로 위치</label>
+          <output id="posOut"></output>
+        </div>
+        <input type="range" id="pos" min="10" max="90" step="1">
+      </div>
+
+      <div class="field">
+        <label for="res" class="label">이미지 크기</label>
+        <select id="res">
+          <option value="auto" id="resAutoOpt">내 화면에 맞춤</option>
+          <option value="1080x2400">1080 × 2400 (FHD+ 20:9)</option>
+          <option value="1080x2340">1080 × 2340 (FHD+ 19.5:9)</option>
+          <option value="1440x3200">1440 × 3200 (QHD+ 20:9)</option>
+          <option value="1440x3120">1440 × 3120 (QHD+ 19.5:9)</option>
+          <option value="720x1600">720 × 1600 (HD+)</option>
+          <option value="custom">직접 입력</option>
+        </select>
+        <div class="custom-res" id="customRes" hidden>
+          <input type="number" id="customW" min="320" max="4096" inputmode="numeric" aria-label="가로 픽셀">
+          <span>×</span>
+          <input type="number" id="customH" min="320" max="4096" inputmode="numeric" aria-label="세로 픽셀">
+        </div>
+      </div>
+
+      <details class="help">
+        <summary>배경화면으로 설정하는 방법</summary>
+        <ol>
+          <li><b>공유</b> 버튼을 누르고 <b>Google 포토</b>나 <b>갤러리</b>를 고르거나, <b>저장</b>을 눌러 이미지를 받아요.</li>
+          <li>갤러리나 포토에서 그 이미지를 열고 <b>⋮ → 배경화면으로 설정</b>(또는 <b>다른 앱으로 열기 → 배경화면</b>)을 눌러요.</li>
+          <li>잠금화면이나 홈화면을 고르면 끝이에요.</li>
+        </ol>
+      </details>
+    </section>
+  </main>
+
+  <div class="action-bar">
+    <button type="button" class="btn btn-secondary" id="saveBtn">저장</button>
+    <button type="button" class="btn btn-primary" id="shareBtn" hidden>공유 · 배경화면 설정</button>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
