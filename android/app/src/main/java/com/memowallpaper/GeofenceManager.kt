@@ -2,8 +2,6 @@ package com.memowallpaper
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -106,20 +104,9 @@ object GeofenceManager {
 
 /** 장소 도착·출발 시 알림 보내기(+ 잠금화면 바꾸기) */
 object PlaceAlerts {
-    const val CHANNEL_ID = "place_alerts"
     /** 경계에서 들락날락해도 같은 알림은 이 시간 안에 다시 안 보냄 */
     private const val COOLDOWN_MS = 15 * 60 * 1000L
 
-    fun ensureChannel(context: Context) {
-        val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "장소 알림", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "정해 둔 장소에 도착하거나 떠날 때 알려줘요"
-                enableVibration(true)
-            },
-        )
-    }
 
     /** 알림 본문(문구가 비어 있으면 연결된 메모 내용) */
     fun body(place: Place, store: MemoStore): String {
@@ -158,14 +145,14 @@ object PlaceAlerts {
     @SuppressLint("MissingPermission")
     fun notify(context: Context, place: Place, entering: Boolean, store: MemoStore) {
         if (!GeofenceManager.hasNotificationPermission(context)) return
-        ensureChannel(context)
+        val channel = Sounds.placeChannelId(context)
         val open = PendingIntent.getActivity(
             context, place.id.hashCode(),
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val text = body(place, store)
-        val n = NotificationCompat.Builder(context, CHANNEL_ID)
+        val n = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_tile)
             .setContentTitle(title(place, entering))
             .setContentText(text)

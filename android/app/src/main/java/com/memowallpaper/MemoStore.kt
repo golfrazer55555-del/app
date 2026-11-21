@@ -22,6 +22,16 @@ class MemoStore private constructor(private val appContext: Context) {
     private val _places = MutableStateFlow(loadPlaces())
     val places: StateFlow<List<Place>> = _places.asStateFlow()
 
+    private val _counters = MutableStateFlow(loadList(KEY_COUNTERS) { Counter.fromJson(it) })
+    val counters: StateFlow<List<Counter>> = _counters.asStateFlow()
+
+    /** 볼륨 버튼으로 세는 중인 카운터 */
+    private val _activeCounterId = MutableStateFlow<String?>(null)
+    val activeCounterId: StateFlow<String?> = _activeCounterId.asStateFlow()
+
+    private val _timers = MutableStateFlow(loadList(KEY_TIMERS) { TimerItem.fromJson(it) })
+    val timers: StateFlow<List<TimerItem>> = _timers.asStateFlow()
+
     private val _appliedId = MutableStateFlow(prefs.getString(KEY_APPLIED, null))
     val appliedId: StateFlow<String?> = _appliedId.asStateFlow()
 
@@ -103,6 +113,87 @@ class MemoStore private constructor(private val appContext: Context) {
         prefs.edit().putLong("place_alert_${placeId}_$entering", System.currentTimeMillis()).apply()
     }
 
+    // ---------- 카운터 ----------
+
+    fun findCounter(id: String?): Counter? = id?.let { i -> _counters.value.firstOrNull { it.id == i } }
+
+    @Synchronized
+    fun upsertCounter(c: Counter) {
+        val list = _counters.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == c.id }
+        if (idx >= 0) list[idx] = c else list.add(c)
+        _counters.value = list
+        saveList(KEY_COUNTERS, list) { it.toJson() }
+    }
+
+    fun deleteCounter(id: String) {
+        _counters.value = _counters.value.filterNot { it.id == id }
+        saveList(KEY_COUNTERS, _counters.value) { it.toJson() }
+    }
+
+    /** 횟수 바꾸기(0 아래로는 안 내려감). 바뀐 카운터를 돌려줘요 */
+    @Synchronized
+    fun addToCounter(id: String, delta: Int): Counter? {
+        val c = findCounter(id) ?: return null
+        val updated = c.copy(count = (c.count + delta).coerceAtLeast(0))
+        upsertCounter(updated)
+        return updated
+    }
+
+    fun setActiveCounter(id: String?) {
+        _activeCounterId.value = id
+    }
+
+    // ---------- 타이머 ----------
+
+    fun findTimer(id: String?): TimerItem? = id?.let { i -> _timers.value.firstOrNull { it.id == i } }
+
+    @Synchronized
+    fun upsertTimer(t: TimerItem) {
+        val list = _timers.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == t.id }
+        if (idx >= 0) list[idx] = t else list.add(0, t)
+        _timers.value = list
+        saveList(KEY_TIMERS, list) { it.toJson() }
+    }
+
+    fun deleteTimer(id: String) {
+        _timers.value = _timers.value.filterNot { it.id == id }
+        saveList(KEY_TIMERS, _timers.value) { it.toJson() }
+    }
+
+    // ---------- 소리 설정 ----------
+
+    private val _soundVersion = MutableStateFlow(0)
+    /** 소리 설정이 바뀔 때마다 올라가는 값(화면 갱신용) */
+    val soundVersion: StateFlow<Int> = _soundVersion.asStateFlow()
+
+    var placeSound: SoundChoice
+        get() = enumOr(prefs.getString("place_sound", null), SoundChoice.CHIME)
+        set(v) { prefs.edit().putString("place_sound", v.name).apply(); _soundVersion.value++ }
+
+    var timerSound: SoundChoice
+        get() = enumOr(prefs.getString("timer_sound", null), SoundChoice.BELL)
+        set(v) { prefs.edit().putString("timer_sound", v.name).apply(); _soundVersion.value++ }
+
+    /** 무음·진동 모드에서도 장소 알림 소리 내기(알람 볼륨 사용) */
+    var soundInSilentMode: Boolean
+        get() = prefs.getBoolean("sound_in_silent", false)
+        set(v) { prefs.edit().putBoolean("sound_in_silent", v).apply(); _soundVersion.value++ }
+
+    private fun <T> loadList(key: String, parse: (org.json.JSONObject) -> T): List<T> {
+        val raw = prefs.getString(key, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            List(arr.length()) { parse(arr.getJSONObject(it)) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun <T> saveList(key: String, list: List<T>, toJson: (T) -> org.json.JSONObject) {
+        val arr = JSONArray().apply { list.forEach { put(toJson(it)) } }
+        prefs.edit().putString(key, arr.toString()).apply()
+    }
+
     /** 위치 감지 등록 오류(위치 꺼짐 등). 없으면 null */
     var geofenceError: String?
         get() = prefs.getString(KEY_GEOFENCE_ERROR, null)
@@ -177,6 +268,8 @@ class MemoStore private constructor(private val appContext: Context) {
         private const val KEY_MEMOS = "memos"
         private const val KEY_SCHEDULES = "schedules"
         private const val KEY_PLACES = "places"
+        private const val KEY_COUNTERS = "counters"
+        private const val KEY_TIMERS = "timers"
         private const val KEY_GEOFENCE_ERROR = "geofence_error"
         private const val KEY_APPLIED = "applied_id"
         private const val KEY_APPLIED_AT = "applied_at"

@@ -5,7 +5,17 @@
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- 시간대별 자동 변경·자정 갱신 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- 타이머·시간대별 변경을 정확한 시각에(Android 13+) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- 카운트(볼륨 버튼)·타이머 울림 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- 장소 알림 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -40,6 +50,16 @@
             </intent-filter>
         </activity>
 
+        <!-- 타이머가 끝났을 때 잠금화면 위에 뜨는 화면 -->
+        <activity
+            android:name=".RingActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:turnScreenOn="true" />
+
         <!-- 앱 아이콘 바로가기: 화면 없이 바로 적용 -->
         <activity
             android:name=".ApplyShortcutActivity"
@@ -64,6 +84,22 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <!-- 볼륨 버튼으로 횟수 세기 -->
+        <service
+            android:name=".CounterService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- 타이머 울림 -->
+        <service
+            android:name=".RingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <receiver
+            android:name=".TimerReceiver"
+            android:exported="false" />
 
         <!-- 홈 화면 위젯 -->
         <receiver

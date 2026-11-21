@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -84,7 +85,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onEdit: (String) -> Unit, onNew: (Memo) -> Unit, onSchedule: () -> Unit) {
+fun HomeScreen(onEdit: (String) -> Unit, onNew: (Memo) -> Unit, onSchedule: () -> Unit, onSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val store = remember { MemoStore.get(context) }
     val memos by store.memos.collectAsStateWithLifecycle()
@@ -120,6 +121,9 @@ fun HomeScreen(onEdit: (String) -> Unit, onNew: (Memo) -> Unit, onSchedule: () -
             TopAppBar(
                 title = { Text("깜빡 방지", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "소리 · 설정")
+                    }
                     IconButton(onClick = { showHelp = true }) {
                         Icon(Icons.Outlined.Info, contentDescription = "사용법")
                     }
@@ -393,6 +397,9 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                     "알림창 타일",
                     "알림창 빠른 설정에 '깜빡 방지' 타일을 추가하세요. 메모가 2개 이하면 누를 때마다 다음 메모로, 3개 이상이면 목록에서 골라요. 잠긴 상태에서는 다음 메모로 넘어가요.",
                 )
+                HelpItem("카운트", "아래 '카운트' 탭에서 횟수를 세요. '볼륨 버튼으로 세기'를 켜면 화면이 꺼진 채 주머니 속에서도 볼륨 버튼으로 셀 수 있고, 진동으로 알려줘요.")
+                HelpItem("타이머", "아래 '타이머' 탭에서 바로 시작하거나 이름을 붙여 만들 수 있어요. 끝나면 잠금화면 위에 큰 화면이 뜨고 끌 때까지 울려요.")
+                HelpItem("알림 소리", "위쪽 톱니바퀴에서 일반 알림과 다른 소리를 고르고 미리 들을 수 있어요.")
                 HelpItem("장소 알림", "아래 '장소' 탭에서 집·마트 같은 곳을 등록하면 도착하거나 떠날 때 알림이 와요. 잠금화면도 같이 바꿀 수 있어요.")
                 HelpItem("시간대별 자동 변경", "아래 '시간' 탭에서 '오전 7:30엔 출근 전, 오후 9시엔 자기 전'처럼 정해 두면 그 시간에 알아서 바뀌어요.")
                 HelpItem("날짜 · D-day · 며칠째", "편집 화면의 버튼으로 넣으면 매일 자정에 숫자가 자동으로 바뀌어요.")

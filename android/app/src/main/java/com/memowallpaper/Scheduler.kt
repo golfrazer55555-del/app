@@ -134,6 +134,7 @@ class SystemEventReceiver : BroadcastReceiver() {
         AppScope.launch {
             try {
                 GeofenceManager.sync(context.applicationContext)
+                TimerManager.restore(context.applicationContext)
                 Scheduler.runDue(context)
             } finally {
                 pending.finish()

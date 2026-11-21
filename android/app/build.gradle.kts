@@ -12,8 +12,8 @@ android {
         applicationId = "com.memowallpaper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "2.1.0"
     }
 
     // 개인 설치용 공용 서명 키(표준 디버그 키와 같은 성격, 비밀 아님).
@@ -65,6 +65,9 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
+    // 볼륨 버튼 카운트(미디어 세션)
+    implementation("androidx.media:media:1.7.0")
     // 장소 알림(위치 감지)과 지도
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
