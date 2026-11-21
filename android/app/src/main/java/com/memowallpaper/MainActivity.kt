@@ -87,6 +87,23 @@ class MainActivity : ComponentActivity() {
         setContent { MemoTheme { App(pendingNav) } }
     }
 
+    /** 카운터 화면이 열려 있고 '볼륨 버튼으로 세기'가 켜져 있으면, 음악을 듣는 중에도 이 화면이 볼륨 버튼을 먼저 받아요 */
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        val target = CounterLogic.foregroundTarget
+        if (target != null && (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.repeatCount == 0) CounterLogic.press(this, target, up = keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (CounterLogic.foregroundTarget != null &&
+            (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
+        ) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         navFrom(intent)?.let { pendingNav.value = it }

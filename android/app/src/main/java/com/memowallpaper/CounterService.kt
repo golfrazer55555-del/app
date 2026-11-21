@@ -63,6 +63,31 @@ object Haptics {
     val GOAL = longArrayOf(0, 600, 200, 600)
 }
 
+/** 버튼 한 번 처리(서비스·주머니 모드·앱 화면 공용) */
+object CounterLogic {
+    /** 앱 화면에서 볼륨 버튼을 받을 카운터(카운터 화면이 열려 있고 '볼륨 버튼으로 세기'가 켜졌을 때) */
+    @Volatile
+    var foregroundTarget: String? = null
+
+    fun press(context: Context, counterId: String, up: Boolean): Counter? {
+        val store = MemoStore.get(context)
+        val c = store.findCounter(counterId) ?: return null
+        val delta = if (up || c.downAction == DownAction.PLUS) 1 else -1
+        val updated = store.addToCounter(counterId, delta) ?: return null
+        when {
+            delta > 0 && updated.goal > 0 && updated.count == updated.goal -> {
+                Haptics.play(context, Haptics.GOAL)
+                Sounds.play(context, store.timerSound)
+            }
+            delta > 0 && updated.buzzEvery10 && updated.count % 10 == 0 -> Haptics.play(context, Haptics.TENTH)
+            delta > 0 -> Haptics.play(context, Haptics.PLUS)
+            else -> Haptics.play(context, Haptics.MINUS)
+        }
+        CounterService.refresh(context)
+        return updated
+    }
+}
+
 /**
  * 볼륨 버튼으로 횟수 세기.
  * 소리 없는 미디어 재생 세션을 켜 두면 화면이 꺼져 있어도 볼륨 버튼 입력이 이 앱으로 와요.
@@ -75,6 +100,7 @@ class CounterService : Service() {
         private const val ACTION_STOP = "counter.STOP"
         private const val ACTION_PLUS = "counter.PLUS"
         private const val ACTION_DOWN = "counter.DOWN"
+        private const val ACTION_REFRESH = "counter.REFRESH"
         private const val EXTRA_ID = "counter_id"
         private const val CHANNEL = "counter_running"
         private const val NOTIFICATION_ID = 8100
@@ -87,8 +113,19 @@ class CounterService : Service() {
         }
 
         fun stop(context: Context) {
+            if (!running) return
             context.startService(Intent(context, CounterService::class.java).setAction(ACTION_STOP))
         }
+
+        /** 알림의 숫자 새로 고침(서비스가 돌고 있을 때만) */
+        fun refresh(context: Context) {
+            if (!running) return
+            runCatching { context.startService(Intent(context, CounterService::class.java).setAction(ACTION_REFRESH)) }
+        }
+
+        @Volatile
+        var running = false
+            private set
     }
 
     private val store by lazy { MemoStore.get(this) }
@@ -113,6 +150,7 @@ class CounterService : Service() {
             ACTION_START -> {
                 val id = intent.getStringExtra(EXTRA_ID)
                 counterId = id
+                running = true
                 // startForegroundService로 시작했으면 먼저 포그라운드로 올려야 해요
                 goForeground()
                 if (id == null || store.findCounter(id) == null) {
@@ -125,6 +163,7 @@ class CounterService : Service() {
             ACTION_PLUS -> press(up = true)
             ACTION_DOWN -> press(up = false)
             ACTION_STOP -> shutdown()
+            ACTION_REFRESH -> updateNotification()
             else -> if (counterId == null) shutdown()
         }
         return START_NOT_STICKY
@@ -133,19 +172,7 @@ class CounterService : Service() {
     /** 버튼 한 번 처리 */
     fun press(up: Boolean) {
         val id = counterId ?: return
-        val c = store.findCounter(id) ?: return
-        val delta = if (up || c.downAction == DownAction.PLUS) 1 else -1
-        val updated = store.addToCounter(id, delta) ?: return
-        when {
-            delta > 0 && updated.goal > 0 && updated.count == updated.goal -> {
-                Haptics.play(this, Haptics.GOAL)
-                Sounds.play(this, store.timerSound)
-            }
-            delta > 0 && updated.buzzEvery10 && updated.count % 10 == 0 -> Haptics.play(this, Haptics.TENTH)
-            delta > 0 -> Haptics.play(this, Haptics.PLUS)
-            else -> Haptics.play(this, Haptics.MINUS)
-        }
-        updateNotification()
+        CounterLogic.press(this, id, up)
     }
 
     private fun setUpSession() {
@@ -276,6 +303,7 @@ class CounterService : Service() {
         session?.runCatching { isActive = false; release() }
         session = null
         counterId = null
+        running = false
         store.setActiveCounter(null)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -284,6 +312,7 @@ class CounterService : Service() {
     override fun onDestroy() {
         silence?.runCatching { stop(); release() }
         session?.runCatching { release() }
+        running = false
         store.setActiveCounter(null)
         super.onDestroy()
     }

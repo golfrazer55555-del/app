@@ -66,7 +66,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.memowallpaper.Counter
+import com.memowallpaper.CounterLogic
 import com.memowallpaper.CounterService
+import com.memowallpaper.PocketCounterActivity
+import androidx.compose.runtime.DisposableEffect
 import com.memowallpaper.DownAction
 import com.memowallpaper.GeofenceManager
 import com.memowallpaper.Haptics
@@ -208,6 +211,12 @@ fun CounterDetailScreen(counterId: String, onClose: () -> Unit) {
 
     BackHandler(onBack = onClose)
 
+    // 이 화면이 떠 있는 동안 볼륨 버튼은 이 카운터로(음악 재생 중에도)
+    DisposableEffect(c.id, volumeMode) {
+        CounterLogic.foregroundTarget = if (volumeMode) c.id else null
+        onDispose { if (CounterLogic.foregroundTarget == c.id) CounterLogic.foregroundTarget = null }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -267,6 +276,31 @@ fun CounterDetailScreen(counterId: String, onClose: () -> Unit) {
             }
             TextButton(onClick = { confirmReset = true }, modifier = Modifier.align(Alignment.End)) { Text("0으로 초기화") }
 
+            // 음악 들으며 세기(주머니 모드)
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("🎵 음악 들으며 세기 (주머니 모드)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "화면을 검게 켜 둔 채 주머니에 넣고 볼륨 버튼으로 세요. 음악을 듣는 중에도 확실히 세지고, " +
+                            "음악 소리 크기는 바뀌지 않아요(미리 맞춰 두세요). 화면 터치는 무시하고, 1.5초 길게 누르면 끝낼 수 있어요.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "화면이 켜져 있는 만큼 배터리를 조금 더 써요(검은 화면이라 갤럭시에선 적은 편).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = {
+                            // 화면이 꺼졌을 때를 대비해 기존 방식도 같이 켜 둠
+                            if (!volumeMode) setVolumeMode(true)
+                            PocketCounterActivity.start(context, c.id)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("주머니 모드 시작") }
+                }
+            }
+
             // 볼륨 버튼 모드
             Card(
                 colors = CardDefaults.cardColors(
@@ -277,7 +311,7 @@ fun CounterDetailScreen(counterId: String, onClose: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("볼륨 버튼으로 세기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text("화면이 꺼져 있어도 돼요", style = MaterialTheme.typography.bodySmall)
+                            Text("화면이 꺼져 있어도 돼요 (음악을 안 들을 때)", style = MaterialTheme.typography.bodySmall)
                         }
                         Switch(checked = volumeMode, onCheckedChange = ::setVolumeMode)
                     }
@@ -290,7 +324,8 @@ fun CounterDetailScreen(counterId: String, onClose: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        "세는 동안에는 볼륨 버튼으로 소리 크기가 바뀌지 않아요. 다 셌으면 꺼 주세요(알림에서도 끌 수 있어요).",
+                        "세는 동안에는 볼륨 버튼으로 소리 크기가 바뀌지 않아요. 다 셌으면 꺼 주세요(알림에서도 끌 수 있어요). " +
+                            "음악을 틀어 두면 화면이 꺼진 상태에선 볼륨 버튼이 음악 앱으로 갈 수 있어요 → 위의 주머니 모드를 쓰세요.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

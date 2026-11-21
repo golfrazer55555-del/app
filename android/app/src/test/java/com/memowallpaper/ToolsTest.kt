@@ -175,4 +175,33 @@ class ToolsTest {
         shadowOf(android.os.Looper.getMainLooper()).idle()
         capture(ring.window.decorView, "screen_ring")
     }
+
+    @Test
+    fun pocketModeCountsVolumeKeys() {
+        val store = MemoStore.get(ctx)
+        val c = Counter(name = "푸시업", goal = 20)
+        store.upsertCounter(c)
+        val intent = Intent(ctx, PocketCounterActivity::class.java).putExtra("counter_id", c.id)
+        val act = Robolectric.buildActivity(PocketCounterActivity::class.java, intent).setup().get()
+        val up = android.view.KeyEvent.KEYCODE_VOLUME_UP
+        val down = android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+        fun key(code: Int, repeat: Int = 0) = android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, code, repeat)
+
+        // 볼륨 버튼을 앱이 먹어서(true) 음악 소리 크기는 안 바뀜
+        assertTrue(act.onKeyDown(up, key(up)))
+        act.onKeyDown(up, key(up, repeat = 1))   // 꾹 누를 때 반복은 무시
+        act.onKeyDown(up, key(up))
+        act.onKeyDown(down, key(down))
+        assertEquals(1, store.findCounter(c.id)!!.count)
+        assertTrue(act.onKeyUp(up, android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, up)))
+
+        // 화면 켜둠 플래그
+        assertTrue(act.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
+
+        repeat(16) { act.onKeyDown(up, key(up)) }
+        compose.waitForIdle()
+        assertEquals(17, store.findCounter(c.id)!!.count)
+        capture(act.window.decorView, "screen_pocket")
+        store.deleteCounter(c.id)
+    }
 }

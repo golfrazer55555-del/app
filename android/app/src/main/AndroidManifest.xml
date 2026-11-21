@@ -60,6 +60,16 @@
             android:taskAffinity=""
             android:turnScreenOn="true" />
 
+        <!-- 주머니 모드: 검은 화면을 켜 둔 채 볼륨 버튼으로 세기(음악 재생 중에도) -->
+        <activity
+            android:name=".PocketCounterActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity="com.memowallpaper.pocket"
+            android:theme="@style/Theme.Pocket" />
+
         <!-- 앱 아이콘 바로가기: 화면 없이 바로 적용 -->
         <activity
             android:name=".ApplyShortcutActivity"
