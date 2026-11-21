@@ -5,8 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -89,9 +92,9 @@ object CounterLogic {
 }
 
 /**
- * 볼륨 버튼으로 횟수 세기.
- * 소리 없는 미디어 재생 세션을 켜 두면 화면이 꺼져 있어도 볼륨 버튼 입력이 이 앱으로 와요.
- * (이어폰 버튼도 +1)
+ * 볼륨 버튼으로 횟수 세기(화면이 꺼져 있어도, 음악을 듣는 중에도).
+ * - 음악이 없을 때: 소리 없는 미디어 세션이 볼륨 버튼 입력을 받아요(이어폰 버튼도 +1)
+ * - 음악이 나올 때: 음악 소리 크기 변화를 알아채서 세고, 소리 크기는 바로 되돌려요
  */
 class CounterService : Service() {
 
@@ -101,6 +104,9 @@ class CounterService : Service() {
         private const val ACTION_PLUS = "counter.PLUS"
         private const val ACTION_DOWN = "counter.DOWN"
         private const val ACTION_REFRESH = "counter.REFRESH"
+        private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+        private const val EXTRA_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE"
+        private const val EXTRA_STREAM_VALUE = "android.media.EXTRA_VOLUME_STREAM_VALUE"
         private const val EXTRA_ID = "counter_id"
         private const val CHANNEL = "counter_running"
         private const val NOTIFICATION_ID = 8100
@@ -129,7 +135,56 @@ class CounterService : Service() {
     }
 
     private val store by lazy { MemoStore.get(this) }
+    private val audio by lazy { getSystemService(AudioManager::class.java) }
     private var counterId: String? = null
+
+    /**
+     * 음악을 듣는 중에는 볼륨 버튼이 음악 앱으로 가서 음악 소리 크기가 한 칸 바뀌어요.
+     * 그 변화를 알아채서 횟수를 세고, 소리 크기는 바로 원래대로 돌려놓아요(음악은 계속 재생).
+     */
+    private var baselineVolume = -1
+    private var volumeWatcherOn = false
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getIntExtra(EXTRA_STREAM_TYPE, -1) != AudioManager.STREAM_MUSIC) return
+            val value = intent.getIntExtra(EXTRA_STREAM_VALUE, -1)
+            onMusicVolumeChanged(value)
+        }
+    }
+
+    /** 음악 소리 크기가 [value]로 바뀌었을 때(테스트에서도 부름) */
+    fun onMusicVolumeChanged(value: Int) {
+        if (value < 0 || baselineVolume < 0 || counterId == null) return
+        val diff = value - baselineVolume
+        if (diff == 0) return // 우리가 되돌린 것
+        // 아주 빨리 두 번 눌러 두 칸 바뀐 경우도 세기(최대 3)
+        repeat(minOf(kotlin.math.abs(diff), 3)) { press(up = diff > 0) }
+        runCatching { audio?.setStreamVolume(AudioManager.STREAM_MUSIC, baselineVolume, 0) }
+    }
+
+    /** 최대·최소에서는 버튼을 눌러도 변화가 없어서 못 알아채니 한 칸 여유를 둠 */
+    private fun startVolumeWatcher() {
+        val am = audio ?: return
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val min = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) am.getStreamMinVolume(AudioManager.STREAM_MUSIC) else 0
+        var cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        if (max - min >= 2) {
+            if (cur >= max) cur = max - 1
+            if (cur <= min) cur = min + 1
+            runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, cur, 0) }
+        }
+        baselineVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        if (!volumeWatcherOn) {
+            ContextCompat.registerReceiver(this, volumeReceiver, IntentFilter(VOLUME_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            volumeWatcherOn = true
+        }
+    }
+
+    private fun stopVolumeWatcher() {
+        if (volumeWatcherOn) runCatching { unregisterReceiver(volumeReceiver) }
+        volumeWatcherOn = false
+        baselineVolume = -1
+    }
     private var session: MediaSessionCompat? = null
     private var silence: AudioTrack? = null
 
@@ -205,6 +260,7 @@ class CounterService : Service() {
             }
         }
         startSilence()
+        startVolumeWatcher()
         updateNotification()
     }
 
@@ -276,7 +332,7 @@ class CounterService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_tile)
             .setContentTitle("${c?.displayName() ?: "카운터"}: ${c?.count ?: 0}$goal")
-            .setContentText("볼륨 ↑ +1 · 볼륨 ↓ $downLabel · 이어폰 버튼 +1")
+            .setContentText("볼륨 ↑ +1 · 볼륨 ↓ $downLabel · 음악 들으면서도 돼요")
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -298,6 +354,7 @@ class CounterService : Service() {
     }
 
     private fun shutdown() {
+        stopVolumeWatcher()
         silence?.runCatching { stop(); release() }
         silence = null
         session?.runCatching { isActive = false; release() }
@@ -310,6 +367,7 @@ class CounterService : Service() {
     }
 
     override fun onDestroy() {
+        stopVolumeWatcher()
         silence?.runCatching { stop(); release() }
         session?.runCatching { release() }
         running = false

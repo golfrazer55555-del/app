@@ -177,31 +177,51 @@ class ToolsTest {
     }
 
     @Test
-    fun pocketModeCountsVolumeKeys() {
+    fun countsWhileMusicPlays() {
         val store = MemoStore.get(ctx)
-        val c = Counter(name = "푸시업", goal = 20)
+        val am = ctx.getSystemService(android.media.AudioManager::class.java)
+        val music = android.media.AudioManager.STREAM_MUSIC
+        val max = am.getStreamMaxVolume(music)
+        // 음악 소리가 최대인 상태에서 시작 → 한 칸 줄여서 여유를 둠
+        am.setStreamVolume(music, max, 0)
+        val c = Counter(name = "줄넘기")
         store.upsertCounter(c)
-        val intent = Intent(ctx, PocketCounterActivity::class.java).putExtra("counter_id", c.id)
-        val act = Robolectric.buildActivity(PocketCounterActivity::class.java, intent).setup().get()
-        val up = android.view.KeyEvent.KEYCODE_VOLUME_UP
-        val down = android.view.KeyEvent.KEYCODE_VOLUME_DOWN
-        fun key(code: Int, repeat: Int = 0) = android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, code, repeat)
+        val intent = Intent(ctx, CounterService::class.java).setAction("counter.START").putExtra("counter_id", c.id)
+        val service = Robolectric.buildService(CounterService::class.java, intent).create().startCommand(0, 1).get()
+        val base = am.getStreamVolume(music)
+        assertEquals(max - 1, base)
 
-        // 볼륨 버튼을 앱이 먹어서(true) 음악 소리 크기는 안 바뀜
-        assertTrue(act.onKeyDown(up, key(up)))
-        act.onKeyDown(up, key(up, repeat = 1))   // 꾹 누를 때 반복은 무시
-        act.onKeyDown(up, key(up))
-        act.onKeyDown(down, key(down))
+        // 음악 앱이 볼륨 ↑를 받아 소리가 한 칸 커짐 → +1 하고 소리는 원래대로
+        am.setStreamVolume(music, base + 1, 0)
+        ctx.sendBroadcast(
+            Intent("android.media.VOLUME_CHANGED_ACTION")
+                .putExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", music)
+                .putExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", base + 1),
+        )
+        shadowOf(android.os.Looper.getMainLooper()).idle()
         assertEquals(1, store.findCounter(c.id)!!.count)
-        assertTrue(act.onKeyUp(up, android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, up)))
+        assertEquals("소리 크기는 되돌림", base, am.getStreamVolume(music))
 
-        // 화면 켜둠 플래그
-        assertTrue(act.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
+        // 되돌린 것 자체(같은 값)는 세지 않음
+        service.onMusicVolumeChanged(base)
+        assertEquals(1, store.findCounter(c.id)!!.count)
 
-        repeat(16) { act.onKeyDown(up, key(up)) }
-        compose.waitForIdle()
-        assertEquals(17, store.findCounter(c.id)!!.count)
-        capture(act.window.decorView, "screen_pocket")
+        // 볼륨 ↓ → −1, 다른 소리(벨소리) 변화는 무시
+        service.onMusicVolumeChanged(base - 1)
+        assertEquals(0, store.findCounter(c.id)!!.count)
+        ctx.sendBroadcast(
+            Intent("android.media.VOLUME_CHANGED_ACTION")
+                .putExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", android.media.AudioManager.STREAM_RING)
+                .putExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", 3),
+        )
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertEquals(0, store.findCounter(c.id)!!.count)
+
+        // 아주 빨리 두 번 → 두 칸
+        service.onMusicVolumeChanged(base + 2)
+        assertEquals(2, store.findCounter(c.id)!!.count)
+
+        service.onStartCommand(Intent(ctx, CounterService::class.java).setAction("counter.STOP"), 0, 2)
         store.deleteCounter(c.id)
     }
 }

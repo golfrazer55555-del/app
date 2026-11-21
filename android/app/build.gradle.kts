@@ -12,8 +12,8 @@ android {
         applicationId = "com.memowallpaper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "2.2.0"
+        versionCode = 6
+        versionName = "2.3.0"
     }
 
     // 개인 설치용 공용 서명 키(표준 디버그 키와 같은 성격, 비밀 아님).
