@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <pattern id="ck" width="64" height="64" patternUnits="userSpaceOnUse">
+      <rect width="64" height="64" fill="#ffffff"/>
+      <rect width="32" height="32" fill="#ddd6fe"/>
+      <rect x="32" y="32" width="32" height="32" fill="#ddd6fe"/>
+    </pattern>
+    <clipPath id="half"><rect x="256" y="0" width="256" height="512"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <g clip-path="url(#half)">
+    <rect x="96" y="96" width="320" height="320" rx="40" fill="url(#ck)"/>
+  </g>
+  <rect x="96" y="96" width="320" height="320" rx="40" fill="none" stroke="#ffffff" stroke-width="10" stroke-dasharray="26 18" opacity=".9"/>
+  <circle cx="256" cy="212" r="56" fill="#ffffff"/>
+  <path d="M152 416c0-70 46-118 104-118s104 48 104 118z" fill="#ffffff"/>
+  <path d="M256 212m-56 0a56 56 0 0 1 56-56v112a56 56 0 0 1-56-56z" fill="#f5f3ff"/>
+</svg>
