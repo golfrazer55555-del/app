@@ -1,7 +1,9 @@
 // 배경 지우개 — 화면, 다듬기 붓, 배경 합성, 저장
 // AI 인식은 worker.js에서 해요.
 
-const WORK_SIDE = 4096;   // 편집·저장 해상도 상한 (긴 변)
+// 폰은 메모리가 적어서 편집·저장 해상도를 조금 낮춰요 (긴 변 기준)
+const MOBILE = matchMedia('(pointer: coarse)').matches;
+const WORK_SIDE = MOBILE ? 3072 : 4096;
 const DETECT_SIDE = 1536; // AI에 넘길 사진 크기 상한 (모델은 어차피 512~1024로 줄여서 봐요)
 const MAX_HISTORY = 40;
 const MODEL_LABEL = { general: '모든 사물', portrait: '사람만' };
@@ -18,7 +20,7 @@ const S = {
   W: 0, H: 0,
   src: null,      // 원본(작업 해상도) 캔버스
   mask: null,     // 흰색 + 알파(=남길 정도) 캔버스, W×H
-  auto: null,     // AI가 만든 처음 마스크 (처음 결과로 되돌리기용)
+  auto: null,     // AI가 만든 처음 마스크(인식 크기 그대로, 처음 결과로 되돌리기용)
   backup: null,   // 붓질 시작 직전 마스크 사본 (되돌리기 조각 만들 때 사용)
   blur: null,     // 흐린 배경 (필요할 때 만듦)
   bgImage: null,  // 사용자가 고른 배경 사진
@@ -91,6 +93,12 @@ function getWorker() {
   return worker;
 }
 
+function releaseWorker() {
+  if (!worker || pending.size) return;
+  worker.terminate();
+  worker = null;
+}
+
 function detect(key, id) {
   const s = Math.min(1, DETECT_SIDE / Math.max(S.W, S.H));
   const c = canvas(S.W * s, S.H * s);
@@ -151,7 +159,7 @@ async function openFile(file) {
   bmp.close?.();
 
   S.mask = canvas(S.W, S.H);
-  S.backup = canvas(S.W, S.H);
+  S.backup = null; // 첫 붓질 때 만들어요
   S.auto = null;
   S.blur = null;
   S.hasMask = false;
@@ -182,8 +190,12 @@ async function runDetect() {
   setBusy(true, '준비 중…', `${MODEL_LABEL[key]} 모델`);
   const t0 = performance.now();
   const id = ++S.reqId;
+  save('bgr-running', key); // 처리 중에 탭이 꺼지면 다음에 알려 주려고 표시
   try {
     const m = await detect(key, id);
+    save('bgr-running', '');
+    // 폰: AI 엔진이 쥐고 있는 메모리(약 1GB)를 바로 돌려줘요. 다음 사진 때는 캐시에서 금방 다시 불러와요.
+    if (MOBILE) releaseWorker();
     if (id !== S.reqId) return; // 그새 다른 사진을 골랐어요
     applyAutoMask(m.mask, m.width, m.height);
     const sec = ((performance.now() - t0) / 1000).toFixed(1);
@@ -191,6 +203,7 @@ async function runDetect() {
     setBusy(false);
     if (isEmptyMask()) toast(key === 'portrait' ? '사람을 못 찾았어요. \'모든 사물\' 모델로 해 보세요' : '남길 피사체를 못 찾았어요', 3500);
   } catch (err) {
+    save('bgr-running', '');
     if (id !== S.reqId) return;
     setBusy(false);
     console.error(err);
@@ -213,8 +226,7 @@ function applyAutoMask(alpha, w, h) {
   mctx.imageSmoothingEnabled = true;
   mctx.imageSmoothingQuality = 'high';
   mctx.drawImage(small, 0, 0, S.W, S.H);
-  S.auto = canvas(S.W, S.H);
-  S.auto.getContext('2d').drawImage(S.mask, 0, 0);
+  S.auto = small;
   S.hasMask = true;
   S.undo = [];
   S.redo = [];
@@ -417,6 +429,7 @@ function toImage(px, py) {
 
 function beginStroke(p) {
   if (!S.hasMask || S.busy) return;
+  S.backup ??= canvas(S.W, S.H);
   S.backup.getContext('2d').clearRect(0, 0, S.W, S.H);
   S.backup.getContext('2d').drawImage(S.mask, 0, 0);
   const r = (S.brush * dpr()) / S.z / 2; // 화면 기준 붓 크기 → 사진 픽셀
@@ -508,7 +521,9 @@ function resetMask() {
   if (!S.auto) return;
   const ctx = S.mask.getContext('2d');
   ctx.clearRect(0, 0, S.W, S.H);
-  ctx.drawImage(S.auto, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(S.auto, 0, 0, S.W, S.H);
   S.undo = [];
   S.redo = [];
   updateButtons();
@@ -664,26 +679,34 @@ function maskBounds() {
 }
 
 async function exportBlob() {
+  // 큰 캔버스는 메모리를 많이 써서(12MP ≈ 48MB) 꼭 필요한 만큼만 만들고 바로 비워요
+  const withShadow = $('shadow').checked;
   const full = canvas(S.W, S.H);
   const f = full.getContext('2d');
   f.imageSmoothingQuality = 'high';
-  const opaque = drawBackground(f, 0, 0, S.W, S.H);
+  f.drawImage(S.src, 0, 0);
+  f.globalCompositeOperation = 'destination-in';
+  f.drawImage(S.mask, 0, 0);
+  f.globalCompositeOperation = 'source-over';
+  let opaque = S.bg !== 'transparent';
 
-  const cutFull = canvas(S.W, S.H);
-  const c = cutFull.getContext('2d');
-  c.drawImage(S.src, 0, 0);
-  c.globalCompositeOperation = 'destination-in';
-  c.drawImage(S.mask, 0, 0);
-
-  const withShadow = $('shadow').checked;
   if (withShadow) {
+    const cutFull = canvas(S.W, S.H);
+    cutFull.getContext('2d').drawImage(full, 0, 0);
+    f.clearRect(0, 0, S.W, S.H);
+    opaque = drawBackground(f, 0, 0, S.W, S.H);
     const sp = shadowParams(1);
     f.shadowColor = 'rgba(0,0,0,.45)';
     f.shadowBlur = sp.blur;
     f.shadowOffsetY = sp.dy;
+    f.drawImage(cutFull, 0, 0);
+    f.shadowColor = 'transparent';
+    cutFull.width = cutFull.height = 0;
+  } else if (opaque) {
+    f.globalCompositeOperation = 'destination-over'; // 피사체 뒤에 배경
+    drawBackground(f, 0, 0, S.W, S.H);
+    f.globalCompositeOperation = 'source-over';
   }
-  f.drawImage(cutFull, 0, 0);
-  f.shadowColor = 'transparent';
 
   let out = full;
   if ($('trim').checked) {
@@ -700,6 +723,8 @@ async function exportBlob() {
   }
   const type = opaque ? 'image/jpeg' : 'image/png';
   const blob = await new Promise((res) => out.toBlob(res, type, 0.95));
+  full.width = full.height = 0;
+  if (out !== full) out.width = out.height = 0;
   const ext = opaque ? 'jpg' : 'png';
   return { blob, filename: `${S.name}-nobg.${ext}` };
 }
@@ -892,6 +917,16 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { 
   } catch { /* 무시 */ }
   $('brush').value = S.brush; $('brushOut').textContent = S.brush;
   $('soft').value = S.soft; $('softOut').textContent = S.soft;
+  let crashed = '';
+  try { crashed = localStorage.getItem('bgr-running') || ''; } catch { /* 무시 */ }
+  if (crashed) {
+    save('bgr-running', '');
+    // 지난번 처리 중에 메모리가 모자라 탭이 꺼졌어요 → 가벼운 모델로 바꿔 둬요
+    if (crashed === 'general') S.model = 'portrait';
+    setTimeout(() => toast(crashed === 'general'
+      ? '지난번에 메모리가 부족해 멈췄어요. 가벼운 \'사람만\' 모델로 바꿨어요'
+      : '지난번에 메모리가 부족해 멈췄어요. 다른 앱을 닫고 다시 해 보세요', 6000), 300);
+  }
   setModel(S.model, false);
   setTool('move');
   setBg('transparent');

@@ -8,8 +8,9 @@ env.allowLocalModels = false; // 모델은 Hugging Face에서 받아 브라우�
 
 // revision: 모델 저장소의 특정 커밋으로 고정해서, 저장소가 바뀌어도 앱 동작이 달라지지 않게 해요.
 const MODELS = {
-  // 사람·동물·물건 등 모든 피사체 (BiRefNet lite 512, MIT, 약 100MB — 처음 한 번만 받아요)
-  general: { id: 'studioludens/birefnet-lite-512', revision: '962e67969ec6acec9c19fab76acee4f5e22e990c', dtype: { wasm: 'fp16', webgpu: 'fp16' } },
+  // 사람·동물·물건 등 모든 피사체 (ormbg, Apache-2.0, 약 44MB — 처음 한 번만 받아요)
+  // BiRefNet은 품질이 조금 더 좋지만 메모리를 2GB 넘게 써서 폰에서 탭이 꺼졌어요. ormbg는 약 1GB.
+  general: { id: 'onnx-community/ormbg-ONNX', revision: '034e2d884afbab897e10e78fc5bb566b29533fd6', dtype: { wasm: 'q8', webgpu: 'fp16' } },
   // 인물 전용: 작고 빨라요 (MODNet, Apache-2.0, 약 7MB). 사람이 아니면 잘 못 찾아요.
   portrait: { id: 'Xenova/modnet', revision: 'fa2fa546052fba4c08921230a26cc69a333fca12', dtype: { wasm: 'q8', webgpu: 'fp32' } },
 };
@@ -19,6 +20,10 @@ let devicePromise;
 
 function pickDevice() {
   devicePromise ??= (async () => {
+    // 폰은 WebGPU 동작이 기기마다 달라서, 확인된 CPU(WASM) 방식만 써요
+    const ua = self.navigator?.userAgent || '';
+    const mobile = self.navigator?.userAgentData?.mobile ?? /Android|iPhone|iPad|Mobile/i.test(ua);
+    if (mobile) return 'wasm';
     try {
       if (self.navigator?.gpu) {
         const adapter = await self.navigator.gpu.requestAdapter();

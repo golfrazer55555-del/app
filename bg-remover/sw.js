@@ -1,7 +1,7 @@
 'use strict';
 
 // 앱 파일을 바꾸면 버전을 올려주세요.
-const CACHE = 'bg-remover-v1';
+const CACHE = 'bg-remover-v2';
 // AI 엔진(jsdelivr)도 캐시해서 오프라인에서도 열리게 해요. 모델 파일은 transformers.js가 따로 캐시해요.
 const CDN = 'https://cdn.jsdelivr.net/';
 const ASSETS = [
