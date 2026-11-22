@@ -224,4 +224,47 @@ class ToolsTest {
         service.onStartCommand(Intent(ctx, CounterService::class.java).setAction("counter.STOP"), 0, 2)
         store.deleteCounter(c.id)
     }
+
+    @Test
+    fun backupRoundTrip() {
+        val store = MemoStore.get(ctx)
+        // 사진 파일이 있는 메모 + 일정·장소·카운터·타이머·설정
+        val photo = "img_backup_test.jpg"
+        ImageStore.file(ctx, photo).writeBytes(ByteArray(1234) { it.toByte() })
+        val memo = Memo(title = "백업 메모", text = "약 먹기", image = photo)
+        store.upsert(memo)
+        store.upsertSchedule(Schedule(hour = 7, minute = 30, memoId = memo.id))
+        store.upsertPlace(Place(name = "집", message = "가스밸브", trigger = Trigger.EXIT))
+        store.upsertCounter(Counter(name = "스쿼트", count = 42))
+        store.upsertTimer(TimerItem(label = "빨래", durationMs = 40 * 60_000L, state = TimerState.RUNNING, endAt = 123))
+        store.placeSound = SoundChoice.MARIMBA
+
+        val bytes = java.io.ByteArrayOutputStream().also { BackupManager.export(ctx, it) }.toByteArray()
+        val before = Triple(store.memos.value, store.places.value, store.counters.value)
+        val schedulesBefore = store.schedules.value
+        val timersBefore = store.timers.value.size
+
+        // 다 지우고(새로 깐 것처럼) 가져오기
+        store.replaceAll(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        ImageStore.file(ctx, photo).delete()
+        store.placeSound = SoundChoice.CHIME
+        assertTrue(store.memos.value.isEmpty())
+
+        val summary = BackupManager.import(ctx, bytes.inputStream())
+        assertEquals(before.first, store.memos.value)
+        assertEquals(before.second, store.places.value)
+        assertEquals(before.third, store.counters.value)
+        assertEquals(schedulesBefore, store.schedules.value)
+        assertEquals(timersBefore, store.timers.value.size)
+        assertTrue("돌던 타이머는 처음 상태로", store.timers.value.all { it.state == TimerState.IDLE })
+        assertEquals(SoundChoice.MARIMBA, store.placeSound)
+        assertEquals(1234L, ImageStore.file(ctx, photo).length())
+        assertTrue(summary.toString().contains("메모 ${before.first.size}개"))
+
+        // 엉뚱한 파일은 거부
+        val bad = runCatching { BackupManager.import(ctx, "not a zip".byteInputStream()) }
+        assertTrue(bad.isFailure)
+        assertEquals("거부해도 데이터는 그대로", before.first, store.memos.value)
+        store.placeSound = SoundChoice.CHIME
+    }
 }

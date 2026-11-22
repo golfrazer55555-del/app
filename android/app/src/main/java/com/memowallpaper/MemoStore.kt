@@ -199,6 +199,27 @@ class MemoStore private constructor(private val appContext: Context) {
         get() = prefs.getString(KEY_GEOFENCE_ERROR, null)
         set(value) = prefs.edit().putString(KEY_GEOFENCE_ERROR, value).apply()
 
+    /** 백업에서 가져온 내용으로 전부 바꾸기 */
+    @Synchronized
+    fun replaceAll(
+        memos: List<Memo>,
+        schedules: List<Schedule>,
+        places: List<Place>,
+        counters: List<Counter>,
+        timers: List<TimerItem>,
+    ) {
+        _counters.value = counters
+        saveList(KEY_COUNTERS, counters) { it.toJson() }
+        _timers.value = timers
+        saveList(KEY_TIMERS, timers) { it.toJson() }
+        _appliedId.value = null
+        prefs.edit().remove(KEY_APPLIED).apply()
+        _schedules.value = schedules
+        saveList(KEY_SCHEDULES, schedules) { it.toJson() }
+        setPlaces(places)
+        setMemos(memos)
+    }
+
     /** 사진·그림 파일 중 메모가 쓰고 있는 것 */
     fun usedMediaFiles(): Set<String> =
         _memos.value.flatMap { listOfNotNull(it.image, it.drawing) }.toSet()

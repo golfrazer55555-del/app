@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,18 +14,30 @@ android {
         applicationId = "com.memowallpaper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.3.0"
+        versionCode = 7
+        versionName = "2.4.0"
     }
 
-    // 개인 설치용 공용 서명 키(표준 디버그 키와 같은 성격, 비밀 아님).
-    // 어디서 빌드해도 같은 서명이라 업데이트 시 지웠다 깔 필요가 없어요.
+    // 서명 키
+    // - release: 배포용 비공개 키. keystore/release.properties + release.jks (저장소에 올리지 않음)
+    // - shared: 개발·테스트용 공개 키(비밀 아님). 예전(2.3.0까지) 설치본 업데이트용으로도 씀(-PsharedKey)
+    val releaseProps = rootProject.file("keystore/release.properties")
+    val useRelease = releaseProps.exists() && !project.hasProperty("sharedKey")
     signingConfigs {
         create("shared") {
             storeFile = rootProject.file("keystore/memo-wallpaper.keystore")
             storePassword = "android"
             keyAlias = "memowallpaper"
             keyPassword = "android"
+        }
+        if (useRelease) {
+            val p = Properties().apply { releaseProps.inputStream().use { load(it) } }
+            create("release") {
+                storeFile = rootProject.file(p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
         }
     }
 
@@ -35,7 +49,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("shared")
+            signingConfig = signingConfigs.getByName(if (useRelease) "release" else "shared")
         }
     }
 
